@@ -1,0 +1,2 @@
+from .Mask2former_multy import TeXMask2Former
+from .Mask2former_multy_resnet import TeXMask2Former_Resnet
