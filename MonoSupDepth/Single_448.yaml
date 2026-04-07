@@ -1,0 +1,11 @@
+_base_: '../Base/Base_Sup_Mono_Depth_size448_infmae.yaml'
+
+model:
+  name: "Single"
+  eval_mode: 'depth' 
+
+  # Network options  
+  pre_trained: False
+  ckpt_path: '' 
+  min_depth: 1.0e-3
+  max_depth: 80.0

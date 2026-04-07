@@ -1,0 +1,12 @@
+_base_: '../Base/Base_Sup_Mono_Depth_size448.yaml'
+
+model:
+  name: "NewCRFMyswin"
+  eval_mode: 'depth' 
+
+  # Network options  
+  encoder: 'base07' #['base07, large07', ''mae]
+  pre_trained: False
+  ckpt_path: '/mnt/dqdisk/CODE/SupDepth4Thermal-main/pt_weights/swin_large_patch4_window7_224_22k.pth' 
+  min_depth: 1.0e-3
+  max_depth: 80.0
