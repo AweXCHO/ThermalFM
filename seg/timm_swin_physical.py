@@ -656,18 +656,18 @@ class SwinMAE_physical(nn.Module):
         
     #     return x
     def forward_encoder(self, x):
-        # radiation = self.radiation_module(x) # 辐射估计模块，斯特凡玻尔兹曼定律
-        # x = x + radiation
+        radiation = self.radiation_module(x) # 辐射估计模块，斯特凡玻尔兹曼定律
+        x = x + radiation
         
-        # tim_output = self.TIM_module(x) # TIM模块，热惯性模块
-        # atm_output = self.ATM_module(x) # ATM模块，大气传输
-        # fused = torch.cat([atm_output, tim_output], dim=1)
-        # x=  self.conv_fusion(fused)
-        # x = self.patch_embed(x)
+        tim_output = self.TIM_module(x) # TIM模块，热惯性模块
+        atm_output = self.ATM_module(x) # ATM模块，大气传输
+        fused = torch.cat([atm_output, tim_output], dim=1)
+        x=  self.conv_fusion(fused)
+        x = self.patch_embed(x)
         # self.output = []
         
-        x = self.ATM_module(x)
-        x = self.patch_embed(x)
+        # x = self.ATM_module(x)
+        # x = self.patch_embed(x)
         self.output = []
         for i,layer in enumerate(self.layers):
             x = layer(x)
