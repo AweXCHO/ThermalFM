@@ -3,11 +3,7 @@ warnings.filterwarnings('ignore')
 from ultralytics import YOLO
 import sys
 import os
-# sys.path.append('/mnt/dqdisk/Code/dinov3/dinov3')
-# sys.path.insert(0, '/mnt/dqdisk/Code/dinov3')
-# BILIBILI UP 魔傀面具
-# 推理参数官方详解链接：https://docs.ultralytics.com/modes/predict/#inference-sources:~:text=of%20Results%20objects-,Inference%20Arguments,-model.predict()
-# 预测框粗细和颜色修改问题可看<新手推荐学习视频.md>下方的<YOLOV8源码常见疑问解答小课堂>第六点
+
 
 if __name__ == '__main__':
     # model = YOLO('./ultralytics/cfg/models/11/yolov11n-dinov3-obb.yaml')
