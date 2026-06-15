@@ -16,4 +16,12 @@ You can just download the weight in [https://drive.google.com/drive/folders/1hWh
 
 # Downstream tasks
 
-The weights of partial tasks are uploaded to [https://drive.google.com/drive/folders/1hWhRLdBcqThV-UetAuCpbRxKXlzk5de3?usp=drive_link](https://drive.google.com/drive/folders/1hWhRLdBcqThV-UetAuCpbRxKXlzk5de3?usp=drive_link).
+(https://github.com/AweXCHO/ThermalFM/Pre-train/result.png)
+
+## Detection
+
+1. Download the YOLO11 code
+2. Put the model located in ./Detection/model/* to /mnt/dqdisk/Code/ultralytics-yolo11-main/ultralytics/nn/backbone/
+3. Modify the ultralytics-yolo11-main/ultralytics/nn/tasks.py
+4. Download the images and weights in 
+5. Run the detect_*_myswin.py
