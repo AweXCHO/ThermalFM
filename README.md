@@ -16,7 +16,7 @@ You can just download the weight in [https://drive.google.com/drive/folders/1hWh
 
 # 📝Downstream tasks
 
-![Results](Pre-train/result.png)
+![Results](Pretrain/result.png)
 
 **ALL the label and the weight can be downloaded in https://pan.baidu.com/s/1vLIbBIZE22U009sHl2zS5g code: 89xy**
 
