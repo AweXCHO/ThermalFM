@@ -18,7 +18,7 @@ You can just download the weight in [https://drive.google.com/drive/folders/1hWh
 
 ![Results](Pretrain/result.png)
 
-**ALL the label and the weight can be downloaded in https://pan.baidu.com/s/1vLIbBIZE22U009sHl2zS5g code: 89xy**
+**ALL the labels and the weights can be downloaded in https://pan.baidu.com/s/1vLIbBIZE22U009sHl2zS5g code: 89xy**
 
 ## Detection
 
@@ -38,7 +38,7 @@ You can just download the weight in [https://drive.google.com/drive/folders/1hWh
 
 2️⃣ Put the model located in ./Single-Class Segmentation/* to mmsegmentation/
 
-3️⃣ Modify the __init__.py in mmsegmentation/
+3️⃣ Modify the `__init__.py` in mmsegmentation/
 
 4️⃣ Download the images in *Citations.md/Single-Class Segmentation* and labels&weights in the link
 
