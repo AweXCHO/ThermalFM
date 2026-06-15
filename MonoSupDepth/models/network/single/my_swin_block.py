@@ -1,13 +1,10 @@
-from functools import partial
-
 import torch
 import torch.nn as nn
-import numpy as np
-from einops import rearrange
 import torch.nn.functional as func
+
+from einops import rearrange
 from typing import Optional
-from mmengine.runner.checkpoint import CheckpointLoader, load_state_dict
-#from mmseg.registry import MODELS
+
 
 class DropPath(nn.Module):
     def __init__(self, drop_prob: float = 0.):
@@ -25,6 +22,29 @@ class DropPath(nn.Module):
         random_tensor = keep_prob + torch.rand(shape, dtype=x.dtype, device=x.device)
         random_tensor.floor_()
         x = x.div(keep_prob) * random_tensor
+        return x
+
+
+class PatchEmbedding(nn.Module):
+    def __init__(self, patch_size: int = 4, in_c: int = 3, embed_dim: int = 96, norm_layer: nn.Module = None):
+        super().__init__()
+        self.patch_size = patch_size
+        self.proj = nn.Conv2d(in_c, embed_dim, kernel_size=(patch_size,) * 2, stride=(patch_size,) * 2)
+        self.norm = norm_layer(embed_dim) if norm_layer else nn.Identity()
+
+    def padding(self, x: torch.Tensor) -> torch.Tensor:
+        _, _, H, W = x.shape
+        if H % self.patch_size != 0 or W % self.patch_size != 0:
+            x = func.pad(x, (0, self.patch_size - W % self.patch_size,
+                             0, self.patch_size - H % self.patch_size,
+                             0, 0))
+        return x
+
+    def forward(self, x):
+        x = self.padding(x)
+        x = self.proj(x)
+        x = rearrange(x, 'B C H W -> B H W C')
+        x = self.norm(x)
         return x
 
 
@@ -419,141 +439,134 @@ class BasicBlock(nn.Module):
             x = self.downsample(x)
         return x
 
-class PatchEmbedding(nn.Module):
-    def __init__(self, patch_size: int = 4, in_c: int = 3, embed_dim: int = 96, norm_layer: nn.Module = None):
-        super().__init__()
-        self.patch_size = patch_size
-        self.proj = nn.Conv2d(in_c, embed_dim, kernel_size=(patch_size,) * 2, stride=(patch_size,) * 2)
-        self.norm = norm_layer(embed_dim) if norm_layer else nn.Identity()
+        
+class BasicBlockUp(nn.Module):
+    def __init__(self, index: int, embed_dim: int = 96, window_size: int = 7, depths: tuple = (2, 2, 6, 2),
+                 num_heads: tuple = (3, 6, 12, 24), mlp_ratio: float = 4., qkv_bias: bool = True,
+                 drop_rate: float = 0., attn_drop_rate: float = 0., drop_path: float = 0.1,
+                 patch_expanding: bool = True, norm_layer=nn.LayerNorm):
+        super(BasicBlockUp, self).__init__()
+        index = len(depths) - index - 2
+        depth = depths[index]
+        dim = embed_dim * 2 ** index
+        num_head = num_heads[index]
 
-    def padding(self, x: torch.Tensor) -> torch.Tensor:
-        _, _, H, W = x.shape
-        if H % self.patch_size != 0 or W % self.patch_size != 0:
-            x = func.pad(x, (0, self.patch_size - W % self.patch_size,
-                             0, self.patch_size - H % self.patch_size,
-                             0, 0))
-        return x
+        dpr = [rate.item() for rate in torch.linspace(0, drop_path, sum(depths))]
+        drop_path_rate = dpr[sum(depths[:index]):sum(depths[:index + 1])]
+
+        self.blocks = nn.ModuleList([
+            SwinTransformerBlock(
+                dim=dim,
+                num_heads=num_head,
+                window_size=window_size,
+                shift=False if (i % 2 == 0) else True,
+                mlp_ratio=mlp_ratio,
+                qkv_bias=qkv_bias,
+                drop=drop_rate,
+                attn_drop=attn_drop_rate,
+                drop_path=drop_path_rate[i],
+                norm_layer=norm_layer)
+            for i in range(depth)])
+        if patch_expanding:
+            self.upsample = PatchExpanding(dim=embed_dim * 2 ** index, norm_layer=norm_layer)
+        else:
+            self.upsample = nn.Identity()
 
     def forward(self, x):
-        x = self.padding(x)
-        x = self.proj(x)
-        x = rearrange(x, 'B C H W -> B H W C')
-        x = self.norm(x)
+        for layer in self.blocks:
+            x = layer(x)
+        x = self.upsample(x)
         return x
 
 
-def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False):
-    """
-    grid_size: int of the grid height and width
-    return:
-    pos_embed: [grid_size*grid_size, embed_dim] or [1+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
-    """
-    grid_h = np.arange(grid_size, dtype=np.float32)
-    grid_w = np.arange(grid_size, dtype=np.float32)
-    grid = np.meshgrid(grid_w, grid_h)  # here w goes first
-    grid = np.stack(grid, axis=0)
 
-    grid = grid.reshape([2, 1, grid_size, grid_size])
-    pos_embed = get_2d_sincos_pos_embed_from_grid(embed_dim, grid)
-    if cls_token:
-        pos_embed = np.concatenate([np.zeros([1, embed_dim]), pos_embed], axis=0)
-    return pos_embed
+# class BasicBlockUp(nn.Module):
+#     def __init__(self, index: int, embed_dim: int = 96, window_size: int = 7, depths: tuple = (2, 2, 6, 2),
+#                  num_heads: tuple = (3, 6, 12, 24), mlp_ratio: float = 4., qkv_bias: bool = True,
+#                  drop_rate: float = 0., attn_drop_rate: float = 0., drop_path: float = 0.1,
+#                  patch_expanding: bool = True, norm_layer=nn.LayerNorm):
+#         super(BasicBlockUp, self).__init__()
+#         index = len(depths) - index - 1  # Adjusted index for up-sampling blocks
+#         depth = depths[index]
+#         dim = embed_dim * 2 ** index
+#         num_head = num_heads[index]
+
+#         dpr = [rate.item() for rate in torch.linspace(0, drop_path, sum(depths))]
+#         drop_path_rate = dpr[sum(depths[:index]):sum(depths[:index + 1])]
+
+#         self.blocks = nn.ModuleList([
+#             SwinTransformerBlock(
+#                 dim=dim,
+#                 num_heads=num_head,
+#                 window_size=window_size,
+#                 shift=False if (i % 2 == 0) else True,
+#                 mlp_ratio=mlp_ratio,
+#                 qkv_bias=qkv_bias,
+#                 drop=drop_rate,
+#                 attn_drop=attn_drop_rate,
+#                 drop_path=drop_path_rate[i],
+#                 norm_layer=norm_layer)
+#             for i in range(depth)])
+
+#         if patch_expanding:
+#             self.upsample = PatchExpanding(dim=embed_dim * 2 ** (index + 1), norm_layer=norm_layer)  # Adjusted dimension for up-sampling
+#         else:
+#             self.upsample = nn.Identity()
+
+#     def forward(self, x, skip=None):
+#         # x: The feature map from the previous upsampling block
+#         # skip: The skip connection from the corresponding downsampling block
+#         for layer in self.blocks:
+#             x = layer(x)
+        
+#         if skip is not None:
+#             # Assuming skip connections have the same spatial dimensions as x after upsampling
+#             x = x + skip  # Simple skip connection by adding the skip connection to the upsampled feature map
+#         x = self.upsample(x)
+#         return x
 
 
-def get_2d_sincos_pos_embed_from_grid(embed_dim, grid):
-    assert embed_dim % 2 == 0
-
-    # use half of dimensions to encode grid_h
-    emb_h = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[0])  # (H*W, D/2)
-    emb_w = get_1d_sincos_pos_embed_from_grid(embed_dim // 2, grid[1])  # (H*W, D/2)
-
-    emb = np.concatenate([emb_h, emb_w], axis=1) # (H*W, D)
-    return emb
-
-
-def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
-    """
-    embed_dim: output dimension for each position
-    pos: a list of positions to be encoded: size (M,)
-    out: (M, D)
-    """
-    assert embed_dim % 2 == 0
-    omega = np.arange(embed_dim // 2, dtype=np.float)
-    omega /= embed_dim / 2.
-    omega = 1. / 10000**omega  # (D/2,)
-
-    pos = pos.reshape(-1)  # (M,)
-    out = np.einsum('m,d->md', pos, omega)  # (M, D/2), outer product
-
-    emb_sin = np.sin(out) # (M, D/2)
-    emb_cos = np.cos(out) # (M, D/2)
-
-    emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
-    return emb
-
-#@MODELS.register_module()
-class SwinMAE(nn.Module):
-    """
-    Masked Auto Encoder with Swin Transformer backbone
-    """
-
-    def __init__(self, img_size: int = 224, patch_size: int = 4, mask_ratio: float = 0.75, in_chans: int = 3,
-                 norm_pix_loss=False,depths: tuple = (2, 2, 18, 2), embed_dim: int = 128, num_heads: tuple = (4, 8, 16, 32),
-                 window_size: int = 7, qkv_bias: bool = True, mlp_ratio: float = 4.,
-                 drop_path_rate: float = 0.4, drop_rate: float = 0, attn_drop_rate: float = 0.,
-                 norm_layer=partial(nn.LayerNorm, eps=1e-6), patch_norm: bool = True,whether_load = True, frozen_stages = -1,pretrain_pth='/mnt/dqdisk/maeworkdir/checkpoints/swin-base-phy-fre-checkpoint-499.pth'):
+class SwinUnet(nn.Module):
+    def __init__(self, patch_size: int = 4, in_chans: int = 3, num_classes: int = 1000, embed_dim: int = 96,
+                 window_size: int = 7, depths: tuple = (2, 2, 6, 2), num_heads: tuple = (3, 6, 12, 24),
+                 mlp_ratio: float = 4., qkv_bias: bool = True, drop_rate: float = 0., attn_drop_rate: float = 0.,
+                 drop_path_rate: float = 0.1, norm_layer=nn.LayerNorm, patch_norm: bool = True):
         super().__init__()
-        self.mask_ratio = mask_ratio
-        assert img_size % patch_size == 0
-        self.num_patches = (img_size // patch_size) ** 2
-        self.patch_size = patch_size
-        self.norm_pix_loss = norm_pix_loss
-        self.num_layers = len(depths)
-        self.depths = depths
-        self.embed_dim = embed_dim
-        self.num_heads = num_heads
-        self.drop_path = drop_path_rate
+
         self.window_size = window_size
+        self.depths = depths
+        self.num_heads = num_heads
+        self.num_layers = len(depths)
+        self.embed_dim = embed_dim
         self.mlp_ratio = mlp_ratio
         self.qkv_bias = qkv_bias
         self.drop_rate = drop_rate
         self.attn_drop_rate = attn_drop_rate
+        self.drop_path = drop_path_rate
         self.norm_layer = norm_layer
 
+        self.patch_embed = PatchEmbedding(
+            patch_size=patch_size, in_c=in_chans, embed_dim=embed_dim,
+            norm_layer=norm_layer if patch_norm else None)
         self.pos_drop = nn.Dropout(p=drop_rate)
-        self.weather_load = whether_load
-        self.frozen_stages = frozen_stages
-        self.pretrain_pth = pretrain_pth
-
-
-        self.patch_embed = PatchEmbedding(patch_size=patch_size, in_c=in_chans, embed_dim=embed_dim,
-                                          norm_layer=norm_layer if patch_norm else None)
-        self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches, embed_dim), requires_grad=False)
-
         self.layers = self.build_layers()
-
-
+        self.first_patch_expanding = PatchExpanding(dim=embed_dim * 2 ** (len(depths) - 1), norm_layer=norm_layer)
+        self.layers_up = self.build_layers_up()
+        self.skip_connection_layers = self.skip_connection()
         self.norm_up = norm_layer(embed_dim)
-        # self.skip_connection_layers = self.skip_connection()
-        self.radiation_module = RadiationModule(dim=in_chans)
-        self.TIM_module = TIM(H=img_size, W=img_size)
-        self.ATM_module = ATM(channel=in_chans)
+        self.final_patch_expanding = FinalPatchExpanding(dim=embed_dim, norm_layer=norm_layer)
+        self.head = nn.Conv2d(in_channels=embed_dim, out_channels=num_classes, kernel_size=(1, 1), bias=False)
+        self.apply(self.init_weights)
 
-        self.init_weights()
-
-    def patchify(self, imgs):
-        """
-        imgs: (N, 3, H, W)
-        x: (N, L, patch_size**2 *3)
-        """
-        p = self.patch_size
-        assert imgs.shape[2] == imgs.shape[3] and imgs.shape[2] % p == 0
-
-        h = w = imgs.shape[2] // p
-        x = imgs.reshape(shape=(imgs.shape[0], 3, h, p, w, p))
-        x = torch.einsum('nchpwq->nhwpqc', x)
-        x = x.reshape(imgs.shape[0], h * w, p ** 2 * 3)
-        return x
+    @staticmethod
+    def init_weights(m):
+        if isinstance(m, nn.Linear):
+            nn.init.trunc_normal_(m.weight, std=.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
 
     def build_layers(self):
         layers = nn.ModuleList()
@@ -574,158 +587,10 @@ class SwinMAE(nn.Module):
             layers.append(layer)
         return layers
 
-    
-
-    def forward_encoder(self, x):
-        radiation = self.radiation_module(x) # 辐射估计模块，斯特凡玻尔兹曼定律
-        
-        # print('radiation_max:', radiation.max())
-        # print('radiation_min:', radiation.min())
-        # print("x_max:", x.max())
-        # print("x_min:", x.min())
-        x = x + radiation
-        tim_output = self.TIM_module(x) # TIM模块，热惯性模块
-        atm_output = self.ATM_module(x) # ATM模块，大气传输
-        fused = torch.cat([atm_output, tim_output], dim=1)
-        x=  self.conv_fusion(fused)
-        x = self.patch_embed(x)
-
-        # radiation = self.radiation_module(x) # 辐射估计模块，斯特凡玻尔兹曼定律
-    
-        # #x = x + radiation
-        # x = self.ATM_module(x)
-        # x = self.patch_embed(x)
-        self.output = []
-        # print(self.layers)
-
-        for i,layer in enumerate(self.layers):
-            x = layer(x)
-            if i in (0, 1, 2, 3):
-                self.output.append(x.permute(0, 3, 1, 2).contiguous())
-                # print(x.permute(0, 3, 1, 2).contiguous().shape)
-        
-        return x
-    
-    def forward(self, x):
-        self.forward_encoder(x)
-        output = self.output
-        return tuple(output)
-    
-
-    def train(self, mode=True):
-        """Convert the model into training mode while keep layers freezed."""
-        super().train(mode)
-        self._freeze_stages()
-
-    def _freeze_stages(self):
-        if self.frozen_stages >= 0:
-            self.patch_embed.eval()
-            for param in self.patch_embed.parameters():
-                param.requires_grad = False
-            self.pos_embed.requires_grad = False
-
-
-        for i in range(1, self.frozen_stages + 1):
-           for _, p in self.named_parameters():
-                p.requires_grad = False
-
-
-    def init_weights(self):
-        checkpoint_path = self.pretrain_pth
-
-        checkpoint = torch.load(checkpoint_path, map_location='cpu')
-
-        checkpoint_model = checkpoint['model']
-        state_dict = self.state_dict()
-        # for k in ['head.weight', 'head.bias']:
-        #     if k in checkpoint_model and checkpoint_model[k].shape != state_dict[k].shape:
-        #         print(f"Removing key {k} from pretrained checkpoint")
-        #         del checkpoint_model[k]
-
-        # load pre-trained model
-        print("=== Checkpoint Weights Summary ===")
-        weight_layers = {k: v for k, v in checkpoint_model.items() if 'weight' in k}
-        def print_layer_stats(layers_dict, title):
-            print(f"\n{title} ({len(layers_dict)} layers):")
-            for name, param in layers_dict.items():
-                print(f"  {name}: {param.shape} | mean: {param.mean().item():.4f} | std: {param.std().item():.4f}")
-        
-        print_layer_stats(weight_layers, "Weight Layers")
-        
-        msg = self.load_state_dict(checkpoint_model, strict=False)
-        print(msg)
-        print("————————————————")
-        print("Load pre-trained checkpoint from: %s" % checkpoint_path)
-
-
-class SwinMAE_ablation(nn.Module):
-    """
-    Masked Auto Encoder with Swin Transformer backbone
-    """
-
-    def __init__(self, img_size: int = 224, patch_size: int = 4, mask_ratio: float = 0.75, in_chans: int = 3,
-                 norm_pix_loss=False,depths: tuple = (2, 2, 18, 2), embed_dim: int = 128, num_heads: tuple = (4, 8, 16, 32),
-                 window_size: int = 7, qkv_bias: bool = True, mlp_ratio: float = 4.,
-                 drop_path_rate: float = 0.4, drop_rate: float = 0, attn_drop_rate: float = 0.,
-                 norm_layer=partial(nn.LayerNorm, eps=1e-6), patch_norm: bool = True,whether_load = True, frozen_stages = -1,atm = True, pretrain_pth='/mnt/dqdisk/maeworkdir/checkpoints/swin-base-phy-fre-checkpoint-499.pth'):
-        super().__init__()
-        self.mask_ratio = mask_ratio
-        assert img_size % patch_size == 0
-        self.num_patches = (img_size // patch_size) ** 2
-        self.patch_size = patch_size
-        self.norm_pix_loss = norm_pix_loss
-        self.num_layers = len(depths)
-        self.depths = depths
-        self.embed_dim = embed_dim
-        self.num_heads = num_heads
-        self.drop_path = drop_path_rate
-        self.window_size = window_size
-        self.mlp_ratio = mlp_ratio
-        self.qkv_bias = qkv_bias
-        self.drop_rate = drop_rate
-        self.attn_drop_rate = attn_drop_rate
-        self.norm_layer = norm_layer
-
-        self.pos_drop = nn.Dropout(p=drop_rate)
-        self.weather_load = whether_load
-        self.frozen_stages = frozen_stages
-        self.pretrain_pth = pretrain_pth
-
-
-        self.patch_embed = PatchEmbedding(patch_size=patch_size, in_c=in_chans, embed_dim=embed_dim,
-                                          norm_layer=norm_layer if patch_norm else None)
-        self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches, embed_dim), requires_grad=False)
-
-        self.layers = self.build_layers()
-
-        self.atm = atm
-
-        self.norm_up = norm_layer(embed_dim)
-        # self.skip_connection_layers = self.skip_connection()
-        self.radiation_module = RadiationModule(dim=in_chans)
-        self.TIM_module = TIM(H=img_size, W=img_size)
-        self.ATM_module = ATM(channel=in_chans)
-
-        self.init_weights()
-
-    def patchify(self, imgs):
-        """
-        imgs: (N, 3, H, W)
-        x: (N, L, patch_size**2 *3)
-        """
-        p = self.patch_size
-        assert imgs.shape[2] == imgs.shape[3] and imgs.shape[2] % p == 0
-
-        h = w = imgs.shape[2] // p
-        x = imgs.reshape(shape=(imgs.shape[0], 3, h, p, w, p))
-        x = torch.einsum('nchpwq->nhwpqc', x)
-        x = x.reshape(imgs.shape[0], h * w, p ** 2 * 3)
-        return x
-
-    def build_layers(self):
-        layers = nn.ModuleList()
-        for i in range(self.num_layers):
-            layer = BasicBlock(
+    def build_layers_up(self):
+        layers_up = nn.ModuleList()
+        for i in range(self.num_layers - 1):
+            layer = BasicBlockUp(
                 index=i,
                 depths=self.depths,
                 embed_dim=self.embed_dim,
@@ -736,100 +601,38 @@ class SwinMAE_ablation(nn.Module):
                 qkv_bias=self.qkv_bias,
                 drop_rate=self.drop_rate,
                 attn_drop_rate=self.attn_drop_rate,
-                norm_layer=self.norm_layer,
-                patch_merging=False if i == self.num_layers - 1 else True)
-            layers.append(layer)
-        return layers
+                patch_expanding=True if i < self.num_layers - 2 else False,
+                norm_layer=self.norm_layer)
+            layers_up.append(layer)
+        return layers_up
 
-    
+    def skip_connection(self):
+        skip_connection_layers = nn.ModuleList()
+        for i in range(self.num_layers - 1):
+            dim = self.embed_dim * 2 ** (self.num_layers - 2 - i)
+            layer = nn.Linear(dim * 2, dim)
+            skip_connection_layers.append(layer)
+        return skip_connection_layers
 
-    def forward_encoder(self, x):
-        radiation = self.radiation_module(x) # 辐射估计模块，斯特凡玻尔兹曼定律
-    
-        #x = x + radiation
-        if self.atm:
-            x = self.ATM_module(x)
-        x = self.patch_embed(x)
-        self.output = []
-        # print(self.layers)
-
-        for i,layer in enumerate(self.layers):
-            x = layer(x)
-            if i in (0, 1, 2, 3):
-                self.output.append(x.permute(0, 3, 1, 2).contiguous())
-                # print(x.permute(0, 3, 1, 2).contiguous().shape)
-        
-        return x
-    
     def forward(self, x):
-        self.forward_encoder(x)
-        output = self.output
-        return tuple(output)
-    
+        x = self.patch_embed(x)
+        x = self.pos_drop(x)
 
-    def train(self, mode=True):
-        """Convert the model into training mode while keep layers freezed."""
-        super().train(mode)
-        self._freeze_stages()
+        x_save = []
+        for i, layer in enumerate(self.layers):
+            x_save.append(x)
+            x = layer(x)
 
-    def _freeze_stages(self):
-        if self.frozen_stages >= 0:
-            self.patch_embed.eval()
-            for param in self.patch_embed.parameters():
-                param.requires_grad = False
-            self.pos_embed.requires_grad = False
+        x = self.first_patch_expanding(x)
 
+        for i, layer in enumerate(self.layers_up):
+            x = torch.cat([x, x_save[len(x_save) - i - 2]], -1)
+            x = self.skip_connection_layers[i](x)
+            x = layer(x)
 
-        for i in range(1, self.frozen_stages + 1):
-           for _, p in self.named_parameters():
-                p.requires_grad = False
+        x = self.norm_up(x)
+        x = self.final_patch_expanding(x)
 
-
-    def init_weights(self):
-        checkpoint_path = self.pretrain_pth
-
-        checkpoint = torch.load(checkpoint_path, map_location='cpu')
-
-        checkpoint_model = checkpoint['model']
-        state_dict = self.state_dict()
-        # for k in ['head.weight', 'head.bias']:
-        #     if k in checkpoint_model and checkpoint_model[k].shape != state_dict[k].shape:
-        #         print(f"Removing key {k} from pretrained checkpoint")
-        #         del checkpoint_model[k]
-
-        # load pre-trained model
-        print("=== Checkpoint Weights Summary ===")
-        weight_layers = {k: v for k, v in checkpoint_model.items() if 'weight' in k}
-        def print_layer_stats(layers_dict, title):
-            print(f"\n{title} ({len(layers_dict)} layers):")
-            for name, param in layers_dict.items():
-                print(f"  {name}: {param.shape} | mean: {param.mean().item():.4f} | std: {param.std().item():.4f}")
-        
-        print_layer_stats(weight_layers, "Weight Layers")
-        
-        msg = self.load_state_dict(checkpoint_model, strict=False)
-        print(msg)
-        print("————————————————")
-        print("Load pre-trained checkpoint from: %s" % checkpoint_path)
-
-def swin_mae(**kwargs):
-    model = SwinMAE(
-        img_size=224, patch_size=4, in_chans=3,
-        decoder_embed_dim=1024,
-        depths=(2, 2, 18, 2), embed_dim=128, num_heads=(4, 8, 16, 32),
-        window_size=7, qkv_bias=True, mlp_ratio=4,
-        drop_path_rate=0.4, drop_rate=0, attn_drop_rate=0,
-        norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
-    return model
-
-
-
-if __name__ == '__main__':
-    # model = swin_mae()
-    model = SwinMAE()
-    imgs = torch.randn(1, 3, 224, 224)
-    print(model)
-
-    output_feature= model(imgs)
-    for i in range(len(output_feature)):
-        print(output_feature[i].shape)
+        x = rearrange(x, 'B H W C -> B C H W')
+        x = self.head(x)
+        return x

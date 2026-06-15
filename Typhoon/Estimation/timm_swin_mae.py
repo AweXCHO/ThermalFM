@@ -501,7 +501,7 @@ class SwinMAE(nn.Module):
                  norm_pix_loss=False,depths: tuple = (2, 2, 18, 2), embed_dim: int = 128, num_heads: tuple = (4, 8, 16, 32),
                  window_size: int = 7, qkv_bias: bool = True, mlp_ratio: float = 4.,
                  drop_path_rate: float = 0.4, drop_rate: float = 0, attn_drop_rate: float = 0.,
-                 norm_layer=partial(nn.LayerNorm, eps=1e-6), patch_norm: bool = True,whether_load = True, frozen_stages = -1,pretrain_pth='/mnt/dqdisk/maeworkdir/checkpoints/checkpoint-520.pth'):
+                 norm_layer=partial(nn.LayerNorm, eps=1e-6), patch_norm: bool = True,whether_load = True, frozen_stages = -1,pretrain_pth='/mnt/dqdisk/maeworkdir/checkpoints/swin-base-phy-fre-checkpoint-499.pth'):
         super().__init__()
         self.mask_ratio = mask_ratio
         assert img_size % patch_size == 0
@@ -578,9 +578,177 @@ class SwinMAE(nn.Module):
 
     def forward_encoder(self, x):
         radiation = self.radiation_module(x) # 辐射估计模块，斯特凡玻尔兹曼定律
+        
+        # print('radiation_max:', radiation.max())
+        # print('radiation_min:', radiation.min())
+        # print("x_max:", x.max())
+        # print("x_min:", x.min())
+        x = x + radiation
+        tim_output = self.TIM_module(x) # TIM模块，热惯性模块
+        atm_output = self.ATM_module(x) # ATM模块，大气传输
+        fused = torch.cat([atm_output, tim_output], dim=1)
+        x=  self.conv_fusion(fused)
+        x = self.patch_embed(x)
+
+        # radiation = self.radiation_module(x) # 辐射估计模块，斯特凡玻尔兹曼定律
+    
+        # #x = x + radiation
+        # x = self.ATM_module(x)
+        # x = self.patch_embed(x)
+        self.output = []
+        # print(self.layers)
+
+        for i,layer in enumerate(self.layers):
+            x = layer(x)
+            if i in (0, 1, 2, 3):
+                self.output.append(x.permute(0, 3, 1, 2).contiguous())
+                # print(x.permute(0, 3, 1, 2).contiguous().shape)
+        
+        return x
+    
+    def forward(self, x):
+        self.forward_encoder(x)
+        output = self.output
+        return tuple(output)
+    
+
+    def train(self, mode=True):
+        """Convert the model into training mode while keep layers freezed."""
+        super().train(mode)
+        self._freeze_stages()
+
+    def _freeze_stages(self):
+        if self.frozen_stages >= 0:
+            self.patch_embed.eval()
+            for param in self.patch_embed.parameters():
+                param.requires_grad = False
+            self.pos_embed.requires_grad = False
+
+
+        for i in range(1, self.frozen_stages + 1):
+           for _, p in self.named_parameters():
+                p.requires_grad = False
+
+
+    def init_weights(self):
+        checkpoint_path = self.pretrain_pth
+
+        checkpoint = torch.load(checkpoint_path, map_location='cpu')
+
+        checkpoint_model = checkpoint['model']
+        state_dict = self.state_dict()
+        # for k in ['head.weight', 'head.bias']:
+        #     if k in checkpoint_model and checkpoint_model[k].shape != state_dict[k].shape:
+        #         print(f"Removing key {k} from pretrained checkpoint")
+        #         del checkpoint_model[k]
+
+        # load pre-trained model
+        print("=== Checkpoint Weights Summary ===")
+        weight_layers = {k: v for k, v in checkpoint_model.items() if 'weight' in k}
+        def print_layer_stats(layers_dict, title):
+            print(f"\n{title} ({len(layers_dict)} layers):")
+            for name, param in layers_dict.items():
+                print(f"  {name}: {param.shape} | mean: {param.mean().item():.4f} | std: {param.std().item():.4f}")
+        
+        print_layer_stats(weight_layers, "Weight Layers")
+        
+        msg = self.load_state_dict(checkpoint_model, strict=False)
+        print(msg)
+        print("————————————————")
+        print("Load pre-trained checkpoint from: %s" % checkpoint_path)
+
+
+class SwinMAE_ablation(nn.Module):
+    """
+    Masked Auto Encoder with Swin Transformer backbone
+    """
+
+    def __init__(self, img_size: int = 224, patch_size: int = 4, mask_ratio: float = 0.75, in_chans: int = 3,
+                 norm_pix_loss=False,depths: tuple = (2, 2, 18, 2), embed_dim: int = 128, num_heads: tuple = (4, 8, 16, 32),
+                 window_size: int = 7, qkv_bias: bool = True, mlp_ratio: float = 4.,
+                 drop_path_rate: float = 0.4, drop_rate: float = 0, attn_drop_rate: float = 0.,
+                 norm_layer=partial(nn.LayerNorm, eps=1e-6), patch_norm: bool = True,whether_load = True, frozen_stages = -1,atm = True, pretrain_pth='/mnt/dqdisk/maeworkdir/checkpoints/swin-base-phy-fre-checkpoint-499.pth'):
+        super().__init__()
+        self.mask_ratio = mask_ratio
+        assert img_size % patch_size == 0
+        self.num_patches = (img_size // patch_size) ** 2
+        self.patch_size = patch_size
+        self.norm_pix_loss = norm_pix_loss
+        self.num_layers = len(depths)
+        self.depths = depths
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+        self.drop_path = drop_path_rate
+        self.window_size = window_size
+        self.mlp_ratio = mlp_ratio
+        self.qkv_bias = qkv_bias
+        self.drop_rate = drop_rate
+        self.attn_drop_rate = attn_drop_rate
+        self.norm_layer = norm_layer
+
+        self.pos_drop = nn.Dropout(p=drop_rate)
+        self.weather_load = whether_load
+        self.frozen_stages = frozen_stages
+        self.pretrain_pth = pretrain_pth
+
+
+        self.patch_embed = PatchEmbedding(patch_size=patch_size, in_c=in_chans, embed_dim=embed_dim,
+                                          norm_layer=norm_layer if patch_norm else None)
+        self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches, embed_dim), requires_grad=False)
+
+        self.layers = self.build_layers()
+
+        self.atm = atm
+
+        self.norm_up = norm_layer(embed_dim)
+        # self.skip_connection_layers = self.skip_connection()
+        self.radiation_module = RadiationModule(dim=in_chans)
+        self.TIM_module = TIM(H=img_size, W=img_size)
+        self.ATM_module = ATM(channel=in_chans)
+
+        self.init_weights()
+
+    def patchify(self, imgs):
+        """
+        imgs: (N, 3, H, W)
+        x: (N, L, patch_size**2 *3)
+        """
+        p = self.patch_size
+        assert imgs.shape[2] == imgs.shape[3] and imgs.shape[2] % p == 0
+
+        h = w = imgs.shape[2] // p
+        x = imgs.reshape(shape=(imgs.shape[0], 3, h, p, w, p))
+        x = torch.einsum('nchpwq->nhwpqc', x)
+        x = x.reshape(imgs.shape[0], h * w, p ** 2 * 3)
+        return x
+
+    def build_layers(self):
+        layers = nn.ModuleList()
+        for i in range(self.num_layers):
+            layer = BasicBlock(
+                index=i,
+                depths=self.depths,
+                embed_dim=self.embed_dim,
+                num_heads=self.num_heads,
+                drop_path=self.drop_path,
+                window_size=self.window_size,
+                mlp_ratio=self.mlp_ratio,
+                qkv_bias=self.qkv_bias,
+                drop_rate=self.drop_rate,
+                attn_drop_rate=self.attn_drop_rate,
+                norm_layer=self.norm_layer,
+                patch_merging=False if i == self.num_layers - 1 else True)
+            layers.append(layer)
+        return layers
+
+    
+
+    def forward_encoder(self, x):
+        radiation = self.radiation_module(x) # 辐射估计模块，斯特凡玻尔兹曼定律
     
         #x = x + radiation
-        x = self.ATM_module(x)
+        if self.atm:
+            x = self.ATM_module(x)
         x = self.patch_embed(x)
         self.output = []
         # print(self.layers)
@@ -630,6 +798,15 @@ class SwinMAE(nn.Module):
         #         del checkpoint_model[k]
 
         # load pre-trained model
+        print("=== Checkpoint Weights Summary ===")
+        weight_layers = {k: v for k, v in checkpoint_model.items() if 'weight' in k}
+        def print_layer_stats(layers_dict, title):
+            print(f"\n{title} ({len(layers_dict)} layers):")
+            for name, param in layers_dict.items():
+                print(f"  {name}: {param.shape} | mean: {param.mean().item():.4f} | std: {param.std().item():.4f}")
+        
+        print_layer_stats(weight_layers, "Weight Layers")
+        
         msg = self.load_state_dict(checkpoint_model, strict=False)
         print(msg)
         print("————————————————")

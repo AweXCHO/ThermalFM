@@ -112,7 +112,7 @@ def parse_args():
                         help="fold number for cross validation")
 
     # evaluation option
-    p.add_argument('--eval', action='store_true', default= False,
+    p.add_argument('--eval', action='store_true', default= True,
                         help='run only evaluation')
     p.add_argument('--timeit', action='store_true', default= False,
                         help='get the inference time')

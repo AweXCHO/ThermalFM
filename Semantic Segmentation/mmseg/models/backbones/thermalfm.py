@@ -1,5 +1,5 @@
 from functools import partial
-
+import torch.nn.functional as F
 import torch
 import torch.nn as nn
 import numpy as np
@@ -7,7 +7,7 @@ from einops import rearrange
 import torch.nn.functional as func
 from typing import Optional
 from mmengine.runner.checkpoint import CheckpointLoader, load_state_dict
-#from mmseg.registry import MODELS
+from mmseg.registry import MODELS
 
 class DropPath(nn.Module):
     def __init__(self, drop_prob: float = 0.):
@@ -268,47 +268,109 @@ class ATM(nn.Module):
         y = x * torch.exp((weight1 + weight2) * d)
         return y
     
-class TIM(nn.Module):
-    def __init__(self, H, W, device=None):
-        super(TIM, self).__init__()
-        # save dimensions
-        self.H = H
-        self.W = W
-        self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+# class TIM(nn.Module):
+#     def __init__(self, H, W, device=None):
+#         super(TIM, self).__init__()
+#         # save dimensions
+#         self.H = H
+#         self.W = W
+#         self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-        # initialize parameters with shape (3, H, W)
-        self.weight = nn.Parameter(torch.zeros(3, H, W, device=self.device))
-        self.alpha  = nn.Parameter(torch.ones(3, H, W, device=self.device))
-        self.Cth    = nn.Parameter(torch.ones(3, H, W, device=self.device))
-        self.Gth    = nn.Parameter(torch.ones(3, H, W, device=self.device))
-        self.t0     = nn.Parameter(torch.ones(3, H, W, device=self.device))
-        self.te     = nn.Parameter(torch.ones(3, H, W, device=self.device))
-        self.Phi0   = nn.Parameter(torch.ones(3, H, W, device=self.device))
+#         # initialize parameters with shape (3, H, W)
+#         self.weight = nn.Parameter(torch.zeros(3, H, W, device=self.device))
+#         self.alpha  = nn.Parameter(torch.ones(3, H, W, device=self.device))
+#         self.Cth    = nn.Parameter(torch.ones(3, H, W, device=self.device))
+#         self.Gth    = nn.Parameter(torch.ones(3, H, W, device=self.device))
+#         self.t0     = nn.Parameter(torch.ones(3, H, W, device=self.device))
+#         self.te     = nn.Parameter(torch.ones(3, H, W, device=self.device))
+#         self.Phi0   = nn.Parameter(torch.ones(3, H, W, device=self.device))
+
+#     def forward(self, input):
+#         # computing Phi1
+#         offset = 0.01
+#         alpha = self.alpha
+#         Cth   = self.Cth
+#         Gth   = self.Gth
+#         t0    = self.t0
+#         te    = self.te
+#         Phi0  = self.Phi0
+
+#         tau = torch.div(Cth, Gth + offset)
+#         expt0tau = torch.exp(-torch.div(t0, tau + offset))
+#         exptetau = torch.exp(-torch.div(te, tau + offset))
+
+#         Numerator = (
+#             input
+#             + alpha * tau * expt0tau * (exptetau - 1) * Phi0
+#         )
+#         Denominator = (
+#             torch.div(alpha, Gth + offset)
+#             * (te + tau * exptetau * (torch.exp(te) - 1))
+#         )
+#         phi1 = torch.div(Numerator, Denominator + offset)
+#         phi1 = phi1 * self.weight
+#         return phi1
+
+class TIM(nn.Module):
+    def __init__(self, base_H=224, base_W=224, device=None):
+        super(TIM, self).__init__()
+        self.base_H = base_H
+        self.base_W = base_W
+        self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        
+        # 基础参数（在基础尺寸上训练）
+        self.base_params = nn.ParameterDict({
+            'weight': nn.Parameter(torch.zeros(3, base_H, base_W, device=self.device)),
+            'alpha': nn.Parameter(torch.ones(3, base_H, base_W, device=self.device)),
+            'Cth': nn.Parameter(torch.ones(3, base_H, base_W, device=self.device)),
+            'Gth': nn.Parameter(torch.ones(3, base_H, base_W, device=self.device)),
+            't0': nn.Parameter(torch.ones(3, base_H, base_W, device=self.device)),
+            'te': nn.Parameter(torch.ones(3, base_H, base_W, device=self.device)),
+            'Phi0': nn.Parameter(torch.ones(3, base_H, base_W, device=self.device))
+        })
+        
+        # 可选：添加一个小的MLP来适应不同尺寸
+        self.adaptor = nn.Sequential(
+            nn.Conv2d(3, 16, 1),
+            nn.ReLU(),
+            nn.Conv2d(16, 3, 1)
+        )
 
     def forward(self, input):
-        # computing Phi1
+        B, C, H_in, W_in = input.shape
+        
+        # 插值基础参数到目标尺寸
+        params = {}
+        for name, param in self.base_params.items():
+            if H_in != self.base_H or W_in != self.base_W:
+                params[name] = F.interpolate(
+                    param.unsqueeze(0), 
+                    size=(H_in, W_in), 
+                    mode='bilinear', 
+                    align_corners=False
+                ).squeeze(0)
+            else:
+                params[name] = param
+        
+        # 可选：通过adaptor微调参数
+        params['weight'] = self.adaptor(params['weight'].unsqueeze(0)).squeeze(0)
+        
+        # 计算 Phi1
         offset = 0.01
-        alpha = self.alpha
-        Cth   = self.Cth
-        Gth   = self.Gth
-        t0    = self.t0
-        te    = self.te
-        Phi0  = self.Phi0
-
-        tau = torch.div(Cth, Gth + offset)
-        expt0tau = torch.exp(-torch.div(t0, tau + offset))
-        exptetau = torch.exp(-torch.div(te, tau + offset))
+        tau = torch.div(params['Cth'], params['Gth'] + offset)
+        expt0tau = torch.exp(-torch.div(params['t0'], tau + offset))
+        exptetau = torch.exp(-torch.div(params['te'], tau + offset))
 
         Numerator = (
             input
-            + alpha * tau * expt0tau * (exptetau - 1) * Phi0
+            + params['alpha'] * tau * expt0tau * (exptetau - 1) * params['Phi0']
         )
         Denominator = (
-            torch.div(alpha, Gth + offset)
-            * (te + tau * exptetau * (torch.exp(te) - 1))
+            torch.div(params['alpha'], params['Gth'] + offset)
+            * (params['te'] + tau * exptetau * (torch.exp(params['te']) - 1))
         )
         phi1 = torch.div(Numerator, Denominator + offset)
-        phi1 = phi1 * self.weight
+        phi1 = phi1 * params['weight']
         return phi1
 
 
@@ -326,7 +388,7 @@ class RadiationModule(nn.Module):
         self.scale = nn.Parameter(torch.tensor(1.0))
         # 用 1×1 卷积做仿射校准
         self.out_conv = nn.Conv2d(dim, dim, kernel_size=1)
-        self.init_radiation_module()
+        # self.init_radiation_module()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # 1）计算 e 和 T
@@ -376,8 +438,6 @@ class RadiationModule(nn.Module):
     def stefan_boltzmann(e: torch.Tensor, T: torch.Tensor) -> torch.Tensor:
         sigma = 5.67
         return sigma * e * T.pow(4)
-
-
 
 class BasicBlock(nn.Module):
     def __init__(self, index: int, embed_dim: int = 96, window_size: int = 7, depths: tuple = (2, 2, 6, 2),
@@ -491,8 +551,9 @@ def get_1d_sincos_pos_embed_from_grid(embed_dim, pos):
     emb = np.concatenate([emb_sin, emb_cos], axis=1)  # (M, D)
     return emb
 
-#@MODELS.register_module()
-class SwinMAE(nn.Module):
+
+@MODELS.register_module()
+class SwinMAE_physical(nn.Module):
     """
     Masked Auto Encoder with Swin Transformer backbone
     """
@@ -501,7 +562,7 @@ class SwinMAE(nn.Module):
                  norm_pix_loss=False,depths: tuple = (2, 2, 18, 2), embed_dim: int = 128, num_heads: tuple = (4, 8, 16, 32),
                  window_size: int = 7, qkv_bias: bool = True, mlp_ratio: float = 4.,
                  drop_path_rate: float = 0.4, drop_rate: float = 0, attn_drop_rate: float = 0.,
-                 norm_layer=partial(nn.LayerNorm, eps=1e-6), patch_norm: bool = True,whether_load = True, frozen_stages = -1,pretrain_pth='/mnt/dqdisk/maeworkdir/checkpoints/swin-base-phy-fre-checkpoint-499.pth'):
+                 norm_layer=partial(nn.LayerNorm, eps=1e-6), patch_norm: bool = True,whether_load = True, frozen_stages = -1,pretrain_pth='/home/hyx/work/MAE-CODE/checkpoint/swin-base-phy-fre-checkpoint-499.pth'):
         super().__init__()
         self.mask_ratio = mask_ratio
         assert img_size % patch_size == 0
@@ -536,8 +597,10 @@ class SwinMAE(nn.Module):
         self.norm_up = norm_layer(embed_dim)
         # self.skip_connection_layers = self.skip_connection()
         self.radiation_module = RadiationModule(dim=in_chans)
-        self.TIM_module = TIM(H=img_size, W=img_size)
+        self.TIM_module = TIM(base_H=img_size, base_W=img_size)
         self.ATM_module = ATM(channel=in_chans)
+
+        self.conv_fusion = nn.Conv2d(6, 3, kernel_size=1, bias=True)
 
         self.init_weights()
 
@@ -575,184 +638,20 @@ class SwinMAE(nn.Module):
         return layers
 
     
-
     def forward_encoder(self, x):
-        radiation = self.radiation_module(x) # 辐射估计模块，斯特凡玻尔兹曼定律
+        # radiation = self.radiation_module(x)
+        # x = x + radiation
         
-        # print('radiation_max:', radiation.max())
-        # print('radiation_min:', radiation.min())
-        # print("x_max:", x.max())
-        # print("x_min:", x.min())
-        x = x + radiation
-        tim_output = self.TIM_module(x) # TIM模块，热惯性模块
-        atm_output = self.ATM_module(x) # ATM模块，大气传输
-        fused = torch.cat([atm_output, tim_output], dim=1)
-        x=  self.conv_fusion(fused)
-        x = self.patch_embed(x)
-
-        # radiation = self.radiation_module(x) # 辐射估计模块，斯特凡玻尔兹曼定律
-    
-        # #x = x + radiation
-        # x = self.ATM_module(x)
+        # tim_output = self.TIM_module(x)
+        # atm_output = self.ATM_module(x)
+        # fused = torch.cat([atm_output, tim_output], dim=1)
+        # x=  self.conv_fusion(fused)
         # x = self.patch_embed(x)
-        self.output = []
-        # print(self.layers)
-
-        for i,layer in enumerate(self.layers):
-            x = layer(x)
-            if i in (0, 1, 2, 3):
-                self.output.append(x.permute(0, 3, 1, 2).contiguous())
-                # print(x.permute(0, 3, 1, 2).contiguous().shape)
+        # self.output = []
         
-        return x
-    
-    def forward(self, x):
-        self.forward_encoder(x)
-        output = self.output
-        return tuple(output)
-    
-
-    def train(self, mode=True):
-        """Convert the model into training mode while keep layers freezed."""
-        super().train(mode)
-        self._freeze_stages()
-
-    def _freeze_stages(self):
-        if self.frozen_stages >= 0:
-            self.patch_embed.eval()
-            for param in self.patch_embed.parameters():
-                param.requires_grad = False
-            self.pos_embed.requires_grad = False
-
-
-        for i in range(1, self.frozen_stages + 1):
-           for _, p in self.named_parameters():
-                p.requires_grad = False
-
-
-    def init_weights(self):
-        checkpoint_path = self.pretrain_pth
-
-        checkpoint = torch.load(checkpoint_path, map_location='cpu')
-
-        checkpoint_model = checkpoint['model']
-        state_dict = self.state_dict()
-        # for k in ['head.weight', 'head.bias']:
-        #     if k in checkpoint_model and checkpoint_model[k].shape != state_dict[k].shape:
-        #         print(f"Removing key {k} from pretrained checkpoint")
-        #         del checkpoint_model[k]
-
-        # load pre-trained model
-        print("=== Checkpoint Weights Summary ===")
-        weight_layers = {k: v for k, v in checkpoint_model.items() if 'weight' in k}
-        def print_layer_stats(layers_dict, title):
-            print(f"\n{title} ({len(layers_dict)} layers):")
-            for name, param in layers_dict.items():
-                print(f"  {name}: {param.shape} | mean: {param.mean().item():.4f} | std: {param.std().item():.4f}")
-        
-        print_layer_stats(weight_layers, "Weight Layers")
-        
-        msg = self.load_state_dict(checkpoint_model, strict=False)
-        print(msg)
-        print("————————————————")
-        print("Load pre-trained checkpoint from: %s" % checkpoint_path)
-
-
-class SwinMAE_ablation(nn.Module):
-    """
-    Masked Auto Encoder with Swin Transformer backbone
-    """
-
-    def __init__(self, img_size: int = 224, patch_size: int = 4, mask_ratio: float = 0.75, in_chans: int = 3,
-                 norm_pix_loss=False,depths: tuple = (2, 2, 18, 2), embed_dim: int = 128, num_heads: tuple = (4, 8, 16, 32),
-                 window_size: int = 7, qkv_bias: bool = True, mlp_ratio: float = 4.,
-                 drop_path_rate: float = 0.4, drop_rate: float = 0, attn_drop_rate: float = 0.,
-                 norm_layer=partial(nn.LayerNorm, eps=1e-6), patch_norm: bool = True,whether_load = True, frozen_stages = -1,atm = True, pretrain_pth='/mnt/dqdisk/maeworkdir/checkpoints/swin-base-phy-fre-checkpoint-499.pth'):
-        super().__init__()
-        self.mask_ratio = mask_ratio
-        assert img_size % patch_size == 0
-        self.num_patches = (img_size // patch_size) ** 2
-        self.patch_size = patch_size
-        self.norm_pix_loss = norm_pix_loss
-        self.num_layers = len(depths)
-        self.depths = depths
-        self.embed_dim = embed_dim
-        self.num_heads = num_heads
-        self.drop_path = drop_path_rate
-        self.window_size = window_size
-        self.mlp_ratio = mlp_ratio
-        self.qkv_bias = qkv_bias
-        self.drop_rate = drop_rate
-        self.attn_drop_rate = attn_drop_rate
-        self.norm_layer = norm_layer
-
-        self.pos_drop = nn.Dropout(p=drop_rate)
-        self.weather_load = whether_load
-        self.frozen_stages = frozen_stages
-        self.pretrain_pth = pretrain_pth
-
-
-        self.patch_embed = PatchEmbedding(patch_size=patch_size, in_c=in_chans, embed_dim=embed_dim,
-                                          norm_layer=norm_layer if patch_norm else None)
-        self.pos_embed = nn.Parameter(torch.zeros(1, self.num_patches, embed_dim), requires_grad=False)
-
-        self.layers = self.build_layers()
-
-        self.atm = atm
-
-        self.norm_up = norm_layer(embed_dim)
-        # self.skip_connection_layers = self.skip_connection()
-        self.radiation_module = RadiationModule(dim=in_chans)
-        self.TIM_module = TIM(H=img_size, W=img_size)
-        self.ATM_module = ATM(channel=in_chans)
-
-        self.init_weights()
-
-    def patchify(self, imgs):
-        """
-        imgs: (N, 3, H, W)
-        x: (N, L, patch_size**2 *3)
-        """
-        p = self.patch_size
-        assert imgs.shape[2] == imgs.shape[3] and imgs.shape[2] % p == 0
-
-        h = w = imgs.shape[2] // p
-        x = imgs.reshape(shape=(imgs.shape[0], 3, h, p, w, p))
-        x = torch.einsum('nchpwq->nhwpqc', x)
-        x = x.reshape(imgs.shape[0], h * w, p ** 2 * 3)
-        return x
-
-    def build_layers(self):
-        layers = nn.ModuleList()
-        for i in range(self.num_layers):
-            layer = BasicBlock(
-                index=i,
-                depths=self.depths,
-                embed_dim=self.embed_dim,
-                num_heads=self.num_heads,
-                drop_path=self.drop_path,
-                window_size=self.window_size,
-                mlp_ratio=self.mlp_ratio,
-                qkv_bias=self.qkv_bias,
-                drop_rate=self.drop_rate,
-                attn_drop_rate=self.attn_drop_rate,
-                norm_layer=self.norm_layer,
-                patch_merging=False if i == self.num_layers - 1 else True)
-            layers.append(layer)
-        return layers
-
-    
-
-    def forward_encoder(self, x):
-        radiation = self.radiation_module(x) # 辐射估计模块，斯特凡玻尔兹曼定律
-    
-        #x = x + radiation
-        if self.atm:
-            x = self.ATM_module(x)
+        x = self.ATM_module(x)
         x = self.patch_embed(x)
         self.output = []
-        # print(self.layers)
-
         for i,layer in enumerate(self.layers):
             x = layer(x)
             if i in (0, 1, 2, 3):
@@ -797,23 +696,46 @@ class SwinMAE_ablation(nn.Module):
         #         print(f"Removing key {k} from pretrained checkpoint")
         #         del checkpoint_model[k]
 
+        # without physical 
+        # skip_modules = ['radiation_module', 'ATM_module']
+        # filtered_dict = {k: v for k, v in checkpoint_model.items() 
+        #          if not any(k.startswith(prefix) for prefix in skip_modules)}
+        
         # load pre-trained model
-        print("=== Checkpoint Weights Summary ===")
-        weight_layers = {k: v for k, v in checkpoint_model.items() if 'weight' in k}
-        def print_layer_stats(layers_dict, title):
-            print(f"\n{title} ({len(layers_dict)} layers):")
-            for name, param in layers_dict.items():
-                print(f"  {name}: {param.shape} | mean: {param.mean().item():.4f} | std: {param.std().item():.4f}")
-        
-        print_layer_stats(weight_layers, "Weight Layers")
-        
         msg = self.load_state_dict(checkpoint_model, strict=False)
         print(msg)
         print("————————————————")
         print("Load pre-trained checkpoint from: %s" % checkpoint_path)
+
+        # checkpoint_path = self.pretrain_pth
+        # # 读取原，下游加物理模块
+        # pretrained_dict = torch.load(checkpoint_path, map_location='cpu')
+        
+        # # 2. 筛选匹配的权重
+        # checkpoint_model = pretrained_dict['model']
+        # model_dict = self.state_dict()
+        
+        # # 2.1 移除预训练权重中与当前模型shape不匹配的key
+        # matched_dict = {k: v for k, v in checkpoint_model.items() 
+        #             if k in model_dict and v.shape == model_dict[k].shape}
+        
+        # # 2.2 记录未匹配的键（用于调试）
+        # unmatched_pretrained = [k for k in checkpoint_model.keys() if k not in matched_dict]
+        # unmatched_model = [k for k in model_dict.keys() if k not in checkpoint_model]
+        
+        # print(f"Loaded {len(matched_dict)}/{len(checkpoint_model)} params from pretrained")
+        # print(f"Unmatched in pretrained: {unmatched_pretrained}")
+        # print(f"New modules: {unmatched_model}")
+
+        # # 3. 更新当前模型权重
+        # model_dict.update(matched_dict)
+        # model.load_state_dict(model_dict, strict=False)
+        # print(model)
+        # print("————————————————")
+        # print("Load pre-trained checkpoint from: %s" % checkpoint_path)
 
 def swin_mae(**kwargs):
-    model = SwinMAE(
+    model = SwinMAE_physical(
         img_size=224, patch_size=4, in_chans=3,
         decoder_embed_dim=1024,
         depths=(2, 2, 18, 2), embed_dim=128, num_heads=(4, 8, 16, 32),
@@ -826,7 +748,7 @@ def swin_mae(**kwargs):
 
 if __name__ == '__main__':
     # model = swin_mae()
-    model = SwinMAE()
+    model = SwinMAE_physical()
     imgs = torch.randn(1, 3, 224, 224)
     print(model)
 

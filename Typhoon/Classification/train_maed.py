@@ -298,7 +298,7 @@ def main():
     if not os.path.exists(folder_path):
         os.makedirs(folder_path, exist_ok=True)
     
-    train_model(model, train_loader, val_loader, device, folder_path)
+    # train_model(model, train_loader, val_loader, device, folder_path)
     
     # 最终测试
     testacc, test_metrics = test(model, val_loader, device)

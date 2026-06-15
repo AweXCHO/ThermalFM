@@ -71,3 +71,68 @@ issn = {1566-2535},
 doi = {https://doi.org/10.1016/j.inffus.2022.03.007},
 author = {Linfeng Tang and Jiteng Yuan and Hao Zhang and Xingyu Jiang and Jiayi Ma},
 }
+```
+
+## Single-Class Segmentation
+```bibtex
+@article{Nirgudkar_MassMIND_Massachusetts_Marine,
+author = {Shailesh Nirgudkar and Michael DeFilippo and Michael Sacarny and Michael Benjamin and Paul Robinette},
+title ={MassMIND: Massachusetts Maritime INfrared Dataset},
+journal = {Int. J. Robot. Res.},
+volume = {42},
+number = {1-2},
+pages = {21-32},
+year = {2023}
+}
+@article{XIONG2021103628,
+title = {MCNet: Multi-level Correction Network for thermal image semantic segmentation of nighttime driving scene},
+journal = {Infrared Phys. Technol.},
+volume = {113},
+pages = {103628},
+year = {2021},
+issn = {1350-4495},
+doi = {https://doi.org/10.1016/j.infrared.2020.103628},
+author = {Haitao Xiong and Wenjie Cai and Qiong Liu},
+keywords = {Thermal image dataset, Nighttime driving scene, Multi-level correction}
+}
+```
+
+## MonoSupDepth
+```bibtex
+@inproceedings{shin2023deep,
+	title={Deep Depth Estimation From Thermal Image},
+	author={Shin, Ukcheol and Park, Jinsun and Kweon, In So},
+	booktitle={Proc. IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+	pages={1043--1053},
+	year={2023}
+}
+```
+
+## Gas
+```bibtex
+@article{RT-CAN,
+title = {Invisible gas detection: An RGB-thermal cross attention network and a new benchmark},
+journal = {Computer Vision and Image Understanding},
+volume = {248},
+pages = {104099},
+year = {2024},
+issn = {1077-3142},
+doi = {https://doi.org/10.1016/j.cviu.2024.104099},
+url = {https://www.sciencedirect.com/science/article/pii/S1077314224001802},
+author = {Jue Wang and Yuxiang Lin and Qi Zhao and Dong Luo and Shuaibao Chen and Wei Chen and Xiaojiang Peng}
+}
+```
+
+## HADAR
+```bibtex
+@article{bao2023heat,
+  title={Heat-assisted detection and ranging},
+  author={Bao, Fanglin and Wang, Xueji and Sureshbabu, Shree Hari and Sreekumar, Gautam and Yang, Liping and Aggarwal, Vaneet and Boddeti, Vishnu N and Jacob, Zubin},
+  journal={Nature},
+  volume={619},
+  number={7971},
+  pages={743--748},
+  year={2023},
+  publisher={Nature Publishing Group UK London}
+}
+```
