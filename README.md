@@ -24,23 +24,23 @@ You can just download the weight in [https://drive.google.com/drive/folders/1hWh
 
 1️⃣ Download the YOLO11 code
 
-2️⃣ Put the model located in ./Detection/model/* to ultralytics-yolo11-main/ultralytics/nn/backbone/
+2️⃣ Put the model located in `./Detection/model/*` to `ultralytics-yolo11-main/ultralytics/nn/backbone/`
 
-3️⃣ Modify the ultralytics-yolo11-main/ultralytics/nn/tasks.py
+3️⃣ Modify the `ultralytics-yolo11-main/ultralytics/nn/tasks.py`
 
-4️⃣ Download the images in *Citations.md/Detection* and labels&weights in the link
+4️⃣ Download the images in `Citations.md/Detection` and labels&weights in the link
 
-5️⃣ Run the detect_*_myswin.py
+5️⃣ Run the `detect_*_myswin.py`
 
 ## Single-class segmentation
 
 1️⃣ Download the mmsegmentation
 
-2️⃣ Put the model located in ./Single-Class Segmentation/* to mmsegmentation/
+2️⃣ Put the model located in `./Single-Class Segmentation/*` to `mmsegmentation/`
 
 3️⃣ Modify the `__init__.py` in mmsegmentation/
 
-4️⃣ Download the images in *Citations.md/Single-Class Segmentation* and labels&weights in the link
+4️⃣ Download the images in `Citations.md/Single-Class Segmentation` and labels&weights in the link
 
 5️⃣ Run the inference of mmsegmentation
 
@@ -48,11 +48,11 @@ You can just download the weight in [https://drive.google.com/drive/folders/1hWh
 
 1️⃣ Download the mmsegmentation
 
-2️⃣ Put the model located in ./Semantic Segmentation/* to mmsegmentation/
+2️⃣ Put the model located in `./Semantic Segmentation/*` to `mmsegmentation/`
 
-3️⃣ Modify the __init__.py in mmsegmentation/
+3️⃣ Modify the `__init__.py` in `mmsegmentation/`
 
-4️⃣ Download the images in *Citations.md/Semantic Segmentation* and labels&weights in the link
+4️⃣ Download the images in `Citations.md/Semantic Segmentation` and labels&weights in the link
 
 5️⃣ Run the inference of mmsegmentation
 
@@ -60,9 +60,9 @@ You can just download the weight in [https://drive.google.com/drive/folders/1hWh
 
 1️⃣ Download the code in https://github.com/UkcheolShin/SupDepth4Thermal
 
-2️⃣ Put the model located in ./MonoSupDepth/* to SupDepth4Thermal/ follow the origin structure
+2️⃣ Put the model located in `./MonoSupDepth/*` to `SupDepth4Thermal/` follow the origin structure
 
-3️⃣ Download the images in *Citations.md/MonoSupDepth* and weights in the link
+3️⃣ Download the images in `Citations.md/MonoSupDepth` and weights in the link
 
 4️⃣ Run the inference of SupDepth4Thermal
 ```
@@ -72,9 +72,9 @@ python test_monodepth.py --config ./configs/MonoSupDepth/<target_model>.yaml --c
 
 1️⃣ Download the code in https://codeocean.com/capsule/8596019/tree/v1
 
-2️⃣ Put the model located in ./Turbulence/* to code/ follow the origin structure
+2️⃣ Put the model located in `./Turbulence/*` to `code/` follow the origin structure
 
-3️⃣ Download the images in *Citations.md/Turbulence* and weights in the link
+3️⃣ Download the images in `Citations.md/Turbulence` and weights in the link
 
 4️⃣ Run the inference of PBCL
 ```
@@ -84,11 +84,11 @@ python test.py
 
 1️⃣ Download the mmsegmentation
 
-2️⃣ Put the model located in ./gas/* to mmsegmentation/
+2️⃣ Put the model located in `./gas/*` to `mmsegmentation/`
 
-3️⃣ Modify the __init__.py in mmsegmentation/
+3️⃣ Modify the `__init__.py` in `mmsegmentation/`
 
-4️⃣ Download the images in *Citations.md/gas* and weights in the link
+4️⃣ Download the images in `Citations.md/gas` and weights in the link
 
 5️⃣ Run the inference of mmsegmentation
 
@@ -114,7 +114,7 @@ python smooth.py
 
 2️⃣ Download the weight in the link
 
-3️⃣ Run the eval in the **main_mask2former.py**
+3️⃣ Run the eval in the `main_mask2former.py`
 
 # 🔗Citation
 If you find our work useful, please cite us by the github address.
