@@ -16,7 +16,7 @@ You can just download the weight in [https://drive.google.com/drive/folders/1hWh
 
 # Downstream tasks
 
-！[Results](https://github.com/AweXCHO/ThermalFM/blob/main/Pre-train/result.png)
+![Results](https://github.com/AweXCHO/ThermalFM/blob/main/Pre-train/result.png)
 
 ## Detection
 
