@@ -2,8 +2,6 @@
 
 ## Detection
 
-### Citations
-
 ```bibtex
 @inproceedings{jia2021llvip,
   title={LLVIP: A visible-infrared paired dataset for low-light vision},
@@ -41,4 +39,35 @@
   year         = {2021},
   organization = {Yantai Raytron Technology Co., Ltd. (烟台睿创微纳技术股份有限公司)},
   note         = {Online; Open Infrared Platform, accessed 15-June-2026}
+}
+```
+
+## Single-Class Segmentation
+
+```bibtex
+@inproceedings{chen2023atmospheric,
+  title={Atmospheric transmission and thermal inertia induced blind road segmentation with a large-scale dataset tbrsd},
+  author={Chen, Junzhang and Bai, Xiangzhi},
+  booktitle={Proc. IEEE/CVF International Conference on Computer Vision (ICCV)},
+  pages={1053--1063},
+  year={2023}
+}
+@article{Nirgudkar_MassMIND_Massachusetts_Marine,
+author = {Shailesh Nirgudkar and Michael DeFilippo and Michael Sacarny and Michael Benjamin and Paul Robinette},
+title ={MassMIND: Massachusetts Maritime INfrared Dataset},
+journal = {Int. J. Robot. Res.},
+volume = {42},
+number = {1-2},
+pages = {21-32},
+year = {2023}
+}
+@article{Tang2022PIAFusion,
+title = {PIAFusion: A progressive infrared and visible image fusion network based on illumination aware},
+journal = {Inf. Fusion},
+volume = {83-84},
+pages = {79-92},
+year = {2022},
+issn = {1566-2535},
+doi = {https://doi.org/10.1016/j.inffus.2022.03.007},
+author = {Linfeng Tang and Jiteng Yuan and Hao Zhang and Xingyu Jiang and Jiayi Ma},
 }
