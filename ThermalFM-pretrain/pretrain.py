@@ -27,7 +27,7 @@ def parser():
     weight.add_argument("--init", help="Strict full-model weight initialization, resetting optimizer/LR/epoch")
     weight.add_argument("--resume", help="Epoch-boundary resume of this package's checkpoints")
     p.add_argument("--epochs", type=int, default=500, help="Total target epochs, not additional epochs")
-    p.add_argument("--batch-size", type=int, default=192, help="Per GPU/rank")
+    p.add_argument("--batch-size", type=int, default=100, help="Per GPU/rank")
     p.add_argument("--cooled-per-batch", type=int, help="Default: rounded corpus fraction, at least one per class")
     p.add_argument("--workers", type=int, default=1, help="Start with 1 for sequential tar; benchmark before increasing")
     p.add_argument("--lr", type=float, default=1.5e-3, help="Explicit actual LR; use e.g. 1e-5 for low-LR continuation")
@@ -44,7 +44,7 @@ def parser():
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--print-freq", type=int, default=20)
     p.add_argument("--max-steps", type=int, default=0, help="Debug only; 0 traverses the planned epoch")
-    p.add_argument("--tiny", action="store_true", help="Small random model for smoke tests, NOT checkpoint-299")
+    p.add_argument("--tiny", action="store_true", help="Small random model for smoke tests")
     return p
 
 

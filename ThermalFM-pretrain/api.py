@@ -1,4 +1,3 @@
-"""Factories retain the parameter names and shapes of full checkpoint-299."""
 
 from functools import partial
 

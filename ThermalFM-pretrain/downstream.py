@@ -37,7 +37,7 @@ def parser():
     p.add_argument("--device", choices=("cuda", "cpu"), default="cuda")
     p.add_argument("--amp", action=argparse.BooleanOptionalAction, default=True)
     p.add_argument("--max-steps", type=int, default=0, help="Training debug limit only")
-    p.add_argument("--tiny", action="store_true", help="Testing architecture only; incompatible with checkpoint-299")
+    p.add_argument("--tiny", action="store_true", help="Testing architecture only; incompatible with checkpoint")
     return p
 
 
