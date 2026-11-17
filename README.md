@@ -16,12 +16,12 @@ CUDA_VISIBLE_DEVICES=0,1,2,3 torchrun --standalone --nproc-per-node=4 \
   -m thermalfm.pretrain \
   --manifest data/pretrain.tsv \
   --root /home/data2/Dataset/ThermalFM/pretrain \
-  --init /home/data1/Proj/ThermalFM/pretrain/AAA_backbone/checkpoint-299.pth \
-  --output outputs/full299_continue \
+  --init /home/data1/Proj/ThermalFM/pretrain/AAA_backbone/checkpoint.pth \
+  --output outputs \
   --epochs 20 --warmup-epochs 1 \
   --batch-size 100 --cooled-per-batch 10 --workers 8 \
   --lr 1e-5 --min-lr 1e-7 \
-  --detector-pos-weight 0.08545571085693504
+  --detector-pos-weight 0.1
 
 
 # 📝Downstream tasks
