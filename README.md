@@ -10,15 +10,10 @@ conda activate thermalFM
 pip install -r requirements.txt
 ```
 
-# 🚪Quick **Usage**
-
-You can just download the weight in [https://drive.google.com/drive/folders/1hWhRLdBcqThV-UetAuCpbRxKXlzk5de3?usp=drive_link](https://drive.google.com/drive/folders/1hWhRLdBcqThV-UetAuCpbRxKXlzk5de3?usp=drive_link), then change the path in /Pre-train/ThermalFM before using ThermalFM as the encoder. 
-
 # 📝Downstream tasks
 
 ![Results](Pretrain/result.png)
 
-**ALL the labels and the weights can be downloaded in https://pan.baidu.com/s/1vLIbBIZE22U009sHl2zS5g code: 89xy**
 
 ## Detection
 
@@ -28,7 +23,7 @@ You can just download the weight in [https://drive.google.com/drive/folders/1hWh
 
 3️⃣ Modify the `ultralytics-yolo11-main/ultralytics/nn/tasks.py`
 
-4️⃣ Download the images in `Citations.md/Detection` and labels&weights in the link
+4️⃣ Download the images in `Citations.md/Detection` and labels in the link
 
 5️⃣ Run the `detect_*_myswin.py`
 
@@ -40,7 +35,7 @@ You can just download the weight in [https://drive.google.com/drive/folders/1hWh
 
 3️⃣ Modify the `__init__.py` in mmsegmentation/
 
-4️⃣ Download the images in `Citations.md/Single-Class Segmentation` and labels&weights in the link
+4️⃣ Download the images in `Citations.md/Single-Class Segmentation` and labels in the link
 
 5️⃣ Run the inference of mmsegmentation
 
@@ -52,7 +47,7 @@ You can just download the weight in [https://drive.google.com/drive/folders/1hWh
 
 3️⃣ Modify the `__init__.py` in `mmsegmentation/`
 
-4️⃣ Download the images in `Citations.md/Semantic Segmentation` and labels&weights in the link
+4️⃣ Download the images in `Citations.md/Semantic Segmentation` and labels in the link
 
 5️⃣ Run the inference of mmsegmentation
 
@@ -62,7 +57,7 @@ You can just download the weight in [https://drive.google.com/drive/folders/1hWh
 
 2️⃣ Put the model located in `./MonoSupDepth/*` to `SupDepth4Thermal/` follow the origin structure
 
-3️⃣ Download the images in `Citations.md/MonoSupDepth` and weights in the link
+3️⃣ Download the images in `Citations.md/MonoSupDepth`
 
 4️⃣ Run the inference of SupDepth4Thermal
 ```
@@ -74,7 +69,7 @@ python test_monodepth.py --config ./configs/MonoSupDepth/<target_model>.yaml --c
 
 2️⃣ Put the model located in `./Turbulence/*` to `code/` follow the origin structure
 
-3️⃣ Download the images in `Citations.md/Turbulence` and weights in the link
+3️⃣ Download the images in `Citations.md/Turbulence`
 
 4️⃣ Run the inference of PBCL
 ```
@@ -88,13 +83,13 @@ python test.py
 
 3️⃣ Modify the `__init__.py` in `mmsegmentation/`
 
-4️⃣ Download the images in `Citations.md/gas` and weights in the link
+4️⃣ Download the images in `Citations.md/gas`
 
 5️⃣ Run the inference of mmsegmentation
 
 ## Tropical cyclone intensity
 
-1️⃣ Download the images and weights in the link
+1️⃣ Download the images in the link
 
 2️⃣ Run the inference of Typhoon classification
 ```
@@ -112,9 +107,7 @@ python smooth.py
 
 1️⃣ Download the code and data in https://github.com/FanglinBao/HADAR/blob/main/TeXNet
 
-2️⃣ Download the weight in the link
-
-3️⃣ Run the eval in the `main_mask2former.py`
+2️⃣ Run the eval in the `main_mask2former.py`
 
 # 🔗Citation
 If you find our work useful, please cite us by the github address.
